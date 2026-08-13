@@ -1,0 +1,68 @@
+name: iOS Build (Unsigned IPA)
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  FLUTTER_VERSION: "3.19.0"
+  XCODE_VERSION: "15.2"
+
+jobs:
+  build-ios:
+    name: Build Unsigned iOS IPA
+    runs-on: macos-14
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: ${{ env.XCODE_VERSION }}
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: "stable"
+          cache: true
+
+      - name: Flutter doctor
+        run: flutter doctor -v
+
+      - name: Install Flutter dependencies
+        run: flutter pub get
+
+      - name: Install CocoaPods
+        run: |
+          cd ios
+          pod install --repo-update
+        shell: bash
+
+      - name: Build iOS (no codesign)
+        run: |
+          flutter build ios --release --no-codesign \
+            --no-tree-shake-icons \
+            --dart-define=FLUTTER_WEB_USE_SKIA=true
+
+      - name: Package unsigned IPA
+        run: |
+          cd build/ios/iphoneos
+          mkdir -p Payload
+          cp -R Runner.app Payload/
+          zip -q -r app-unsigned.ipa Payload
+          rm -rf Payload
+          ls -lh app-unsigned.ipa
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-unsigned-ipa
+          path: build/ios/iphoneos/app-unsigned.ipa
+          retention-days: 30
